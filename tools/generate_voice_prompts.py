@@ -134,6 +134,50 @@ def human_recorded():
     }
 
 
+def cap_pauses(wav_in, wav_out, max_pause=0.30, trigger=0.35, block=0.01):
+    """Shorten mid-line silences longer than `trigger` s to `max_pause` s.
+
+    TTS pauses can run past half a second, which makes the lines feel
+    staccato. Pure python (16-bit mono wav) because ffmpeg's silenceremove
+    cannot cap internal silences reliably.
+    """
+    import array
+    import wave
+
+    with wave.open(str(wav_in), "rb") as reader:
+        params = reader.getparams()
+        samples = array.array("h", reader.readframes(params.nframes))
+    n = int(params.framerate * block)
+    peaks = [max(map(abs, samples[i:i + n]), default=0)
+             for i in range(0, len(samples), n)]
+    threshold = max(peaks) * 0.02  # ~ -34 dB relative to the clip's peak
+    quiet = [p <= threshold for p in peaks]
+
+    kept = array.array("h")
+    i = 0
+    while i < len(peaks):
+        if not quiet[i]:
+            kept.extend(samples[i * n:(i + 1) * n])
+            i += 1
+            continue
+        run = i
+        while run < len(peaks) and quiet[run]:
+            run += 1
+        length = run - i
+        # Leading/trailing silence is the edge trim's job; only cap runs
+        # strictly inside the clip.
+        if i > 0 and run < len(peaks) and length * block > trigger:
+            length = int(max_pause / block)
+        kept.extend(samples[i * n:(i + length) * n])
+        i = run
+
+    with wave.open(str(wav_out), "wb") as writer:
+        writer.setnchannels(params.nchannels)
+        writer.setsampwidth(params.sampwidth)
+        writer.setframerate(params.framerate)
+        writer.writeframes(kept.tobytes())
+
+
 def postprocess_to_mp3(wav, name):
     """Trim edge silence, peak-normalize to -1 dB, encode into OUT.
 
@@ -141,8 +185,15 @@ def postprocess_to_mp3(wav, name):
     keeps the 45 bundled clips small. record_voice_prompts.py must encode
     with the same settings.
     """
-    trim = ("silenceremove=start_periods=1:start_threshold=-40dB,areverse,"
-            "silenceremove=start_periods=1:start_threshold=-40dB,areverse")
+    capped = wav.with_suffix(".capped.wav")
+    cap_pauses(wav, capped)
+    wav = capped
+    trim = (
+        "silenceremove=start_periods=1:start_threshold=-40dB,areverse,"
+        "silenceremove=start_periods=1:start_threshold=-40dB,areverse,"
+        # soften the hard-trimmed edges with a short lead-in/tail
+        "adelay=60,apad=pad_dur=0.15"
+    )
     probe = subprocess.run(
         ["ffmpeg", "-i", str(wav), "-af", f"{trim},volumedetect", "-f", "null", "-"],
         capture_output=True, text=True,
