@@ -12,7 +12,12 @@ sealed interface VoiceLine {
     data class NextPrompt(val color: BallColor) : VoiceLine
     data class Wrong(val target: BallColor, val actual: BallColor) : VoiceLine
     data object AllClean : VoiceLine
-    data class Determined(val color: BallColor) : VoiceLine
+
+    /**
+     * The praise alone; the game queues a [NextPrompt] right after it, so
+     * one clip covers every color.
+     */
+    data object Determined : VoiceLine
     data object Win : VoiceLine
 
     companion object {
@@ -20,10 +25,10 @@ sealed interface VoiceLine {
         fun all(): List<VoiceLine> = buildList {
             add(AllClean)
             add(Win)
+            add(Determined)
             for (c in BallColor.entries) {
                 add(FirstPrompt(c))
                 add(NextPrompt(c))
-                add(Determined(c))
                 for (a in BallColor.entries) {
                     if (a != c) add(Wrong(c, a))
                 }
@@ -38,7 +43,7 @@ fun VoiceLine.clipFile(): String = when (this) {
     is VoiceLine.NextPrompt -> "next_${color.name.lowercase()}"
     is VoiceLine.Wrong -> "wrong_${target.name.lowercase()}_${actual.name.lowercase()}"
     VoiceLine.AllClean -> "all_clean"
-    is VoiceLine.Determined -> "determined_${color.name.lowercase()}"
+    VoiceLine.Determined -> "determined"
     VoiceLine.Win -> "win"
 } + ".mp3"
 
@@ -53,7 +58,7 @@ fun VoiceLine.text(strings: GameStrings): String {
                 .replace("{target}", name(target))
                 .replace("{color}", name(actual))
         VoiceLine.AllClean -> strings.speakAllClean
-        is VoiceLine.Determined -> strings.speakDetermined.replace("{color}", name(color))
+        VoiceLine.Determined -> strings.speakDetermined
         VoiceLine.Win -> strings.speakWin
     }
 }

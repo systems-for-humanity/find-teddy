@@ -9,3 +9,4 @@ captures/
 iosApp/iosApp.xcodeproj/xcuserdata/
 iosApp/iosApp.xcodeproj/project.xcworkspace/xcuserdata/
 __pycache__/
+*.human-recording.bak.mp3

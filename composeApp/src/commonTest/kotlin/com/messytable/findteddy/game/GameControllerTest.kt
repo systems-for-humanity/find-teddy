@@ -227,6 +227,54 @@ class GameControllerTest {
     }
 
     @Test
+    fun determinedPraiseIsFollowedByTheColorPrompt() {
+        val spoken = mutableListOf<VoiceLine>()
+        val c = controller(speak = { spoken += it })
+        settle(c, frames = 300)
+        val target = c.targetColor!!
+        val wrong = c.balls.first { it.color != target && !it.popping }
+        wrong.x = W / 2f
+        wrong.y = 150f
+        repeat(3) { c.tap(wrong.x, wrong.y) }
+        assertTrue(spoken.contains(VoiceLine.Determined), "blast should speak the praise")
+        assertFalse(
+            spoken.contains(VoiceLine.NextPrompt(target)),
+            "the color prompt must wait for the praise to finish",
+        )
+        settle(c, frames = 240) // 4 s > DETERMINED_PRAISE_SECONDS
+        assertTrue(
+            spoken.contains(VoiceLine.NextPrompt(target)),
+            "the praise should be followed by the color prompt",
+        )
+    }
+
+    @Test
+    fun newSpeechCancelsPendingDeterminedFollowUp() {
+        val spoken = mutableListOf<VoiceLine>()
+        val c = controller(speak = { spoken += it })
+        settle(c, frames = 300)
+        val target = c.targetColor!!
+        val wrong = c.balls.first { it.color != target && !it.popping }
+        wrong.x = W / 2f
+        wrong.y = 150f
+        repeat(3) { c.tap(wrong.x, wrong.y) }
+        // The round moves on before the praise finishes.
+        for (b in c.balls) {
+            if (b.color == target) {
+                b.popping = true
+                b.popProgress = 1f
+            }
+        }
+        c.update(DT)
+        assertNotEquals(target, c.targetColor)
+        settle(c, frames = 240)
+        assertFalse(
+            spoken.contains(VoiceLine.NextPrompt(target)),
+            "a stale follow-up prompt must not fire after the round moved on",
+        )
+    }
+
+    @Test
     fun tappingDifferentWrongBallsDoesNotBuildAStreak() {
         val c = controller()
         settle(c, frames = 300)

@@ -6,9 +6,9 @@ import java.io.File
 import kotlin.math.roundToInt
 
 actual class GameSoundPlayer actual constructor(
-    popWavs: List<ByteArray>,
-    boomWav: ByteArray,
-    bigBoomWav: ByteArray,
+    pops: List<ByteArray>,
+    boom: ByteArray,
+    bigBoom: ByteArray,
 ) {
     private val soundPool = SoundPool.Builder()
         .setMaxStreams(5)
@@ -28,14 +28,14 @@ actual class GameSoundPlayer actual constructor(
         soundPool.setOnLoadCompleteListener { _, sampleId, status ->
             if (status == 0) loadedIds += sampleId
         }
-        popIds = popWavs.mapIndexed { i, wav -> load("pop_$i.wav", wav) }
-        boomId = load("boom.wav", boomWav)
-        bigBoomId = load("boom_big.wav", bigBoomWav)
+        popIds = pops.mapIndexed { i, bytes -> load("pop_$i.mp3", bytes) }
+        boomId = load("boom.mp3", boom)
+        bigBoomId = load("boom_big.mp3", bigBoom)
     }
 
-    private fun load(name: String, wav: ByteArray): Int {
+    private fun load(name: String, bytes: ByteArray): Int {
         val file = File(appContext.cacheDir, name)
-        file.writeBytes(wav)
+        file.writeBytes(bytes)
         return soundPool.load(file.path, 1)
     }
 

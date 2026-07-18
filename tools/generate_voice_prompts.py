@@ -3,40 +3,53 @@
 
 Reads the English prompt patterns from the compose-resources strings.xml,
 expands the {color}/{target} placeholders over all ball colors, and renders
-one clip per line with edge-tts (free Microsoft neural voices).
+one clip per line.
 
 Voice direction: an enthusiastic cowboy teddy bear.
 
-- With an OpenAI API key present (read from ~/.config/openai_api.key, or
-  the OPENAI_API_KEY env var), renders via OpenAI gpt-4o-mini-tts, which
-  takes voice instructions and can actually do the western drawl. Costs a
-  few cents per full render (needs API platform credit — separate from a
-  ChatGPT subscription).
-- Otherwise falls back to edge-tts (free): en-US-GuyNeural, the most
-  energetic stock voice ("Passion"), rate/pitch pushed up for the bouncy
-  teddy feel. No real drawl — the text carries the cowboy flavor.
+Backends, best first:
+- maya: Maya1 (open-weights 3B TTS, Apache-2.0) served by ollama on the host
+  named by MAYA_HOST (default moffice), driven over ssh via maya1_render.py.
+  Designs the cowboy voice from a text description — real western drawl,
+  free, local. See maya1_render.py for the one-time host setup.
+- openai: gpt-4o-mini-tts (key from ~/.config/openai_api.key or
+  OPENAI_API_KEY), voice instructions do a decent drawl. Costs cents.
+- edge: edge-tts (free Microsoft neural voices), no drawl — the text alone
+  carries the cowboy flavor. Requires: pipx install edge-tts
+
+files/voice/render_manifest.json remembers which backend rendered the
+current clips and a per-clip signature of (backend, voice config, text):
+re-renders stick to the same backend (so a strings.xml tweak can't silently
+change the game's voice — force a switch with VOICE_TTS=maya|openai|edge)
+and only clips whose signature changed are re-rendered. Clips listed in
+files/voice/recorded_by_human.txt are personal recordings and are never
+overwritten. VOICE_OVERWRITE=1 re-renders everything, human clips included.
 
 Run directly or via the :composeApp:generateVoicePrompts gradle task
-(which skips it while strings.xml is unchanged). Fallback requires:
-pipx install edge-tts
+(which skips it while strings.xml is unchanged).
 """
 
 import concurrent.futures
+import hashlib
 import json
 import os
 import pathlib
 import shutil
 import subprocess
 import sys
+import tempfile
 import urllib.request
 import xml.etree.ElementTree as ET
 
-# edge-tts fallback settings
-VOICE = "en-US-GuyNeural"
-RATE = "+12%"
-PITCH = "+20Hz"
+# maya (ollama) settings
+MAYA_HOST = os.environ.get("MAYA_HOST", "moffice")
+MAYA_VOICE = (
+    "Enthusiastic cowboy teddy bear character, warm friendly male voice "
+    "with a strong American southern western drawl. Slightly high pitch, "
+    "bouncy excited energy, speaking slowly and clearly to a toddler."
+)
 
-# OpenAI settings
+# openai settings
 OPENAI_MODEL = "gpt-4o-mini-tts"
 OPENAI_VOICE = "ash"  # energetic male; try "verse" or "ballad" too
 OPENAI_INSTRUCTIONS = (
@@ -45,10 +58,36 @@ OPENAI_INSTRUCTIONS = (
     "announcer who is also a cuddly toy. Slow enough for a toddler to follow."
 )
 
+# edge-tts settings
+VOICE = "en-US-GuyNeural"
+RATE = "+12%"
+PITCH = "+20Hz"
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 STRINGS = ROOT / "composeApp/src/commonMain/composeResources/values/strings.xml"
 OUT = ROOT / "composeApp/src/commonMain/composeResources/files/voice"
+MANIFEST = OUT / "render_manifest.json"
 COLORS = ["red", "blue", "green", "yellow", "purple", "orange"]
+
+
+def load_manifest():
+    if MANIFEST.exists():
+        return json.loads(MANIFEST.read_text())
+    return {}
+
+
+def voice_config(backend):
+    """Everything besides the text that shapes a clip's sound."""
+    return {
+        "maya": f"{MAYA_VOICE}",
+        "openai": f"{OPENAI_MODEL}|{OPENAI_VOICE}|{OPENAI_INSTRUCTIONS}",
+        "edge": f"{VOICE}|{RATE}|{PITCH}",
+    }.get(backend, backend)
+
+
+def clip_signature(backend, text):
+    payload = f"{backend}|{voice_config(backend)}|{text}"
+    return hashlib.sha1(payload.encode()).hexdigest()
 
 
 def edge_tts_bin():
@@ -69,11 +108,12 @@ def build_clips(s):
     clips = {
         "all_clean": s["speak_all_clean"],
         "win": s["speak_win"],
+        # the praise stands alone; the game plays next_<color> right after it
+        "determined": s["speak_determined"],
     }
     for c in COLORS:
         clips[f"first_{c}"] = s["speak_first_prompt"].replace("{color}", color_word[c])
         clips[f"next_{c}"] = s["speak_next_prompt"].replace("{color}", color_word[c])
-        clips[f"determined_{c}"] = s["speak_determined"].replace("{color}", color_word[c])
         for a in COLORS:
             if a != c:
                 clips[f"wrong_{c}_{a}"] = (
@@ -82,6 +122,86 @@ def build_clips(s):
                     .replace("{color}", color_word[a])
                 )
     return clips
+
+
+def human_recorded():
+    marker = OUT / "recorded_by_human.txt"
+    if not marker.exists() or os.environ.get("VOICE_OVERWRITE"):
+        return set()
+    return {
+        line.strip() for line in marker.read_text().splitlines()
+        if line.strip() and not line.startswith("#")
+    }
+
+
+def postprocess_to_mp3(wav, name):
+    """Trim edge silence, peak-normalize to -1 dB, encode into OUT.
+
+    24 kHz mono 48 kbps: maya renders 24 kHz and speech doesn't need more —
+    keeps the 45 bundled clips small. record_voice_prompts.py must encode
+    with the same settings.
+    """
+    trim = ("silenceremove=start_periods=1:start_threshold=-40dB,areverse,"
+            "silenceremove=start_periods=1:start_threshold=-40dB,areverse")
+    probe = subprocess.run(
+        ["ffmpeg", "-i", str(wav), "-af", f"{trim},volumedetect", "-f", "null", "-"],
+        capture_output=True, text=True,
+    )
+    gain = 0.0
+    for line in probe.stderr.splitlines():
+        if "max_volume:" in line:
+            gain = -1.0 - float(line.split("max_volume:")[1].replace("dB", "").strip())
+    subprocess.run(
+        ["ffmpeg", "-y", "-v", "error", "-i", str(wav),
+         "-af", f"{trim},volume={gain:.1f}dB", "-ac", "1", "-ar", "24000",
+         "-codec:a", "libmp3lame", "-b:a", "48k", str(OUT / f"{name}.mp3")],
+        check=True,
+    )
+
+
+def maya_available():
+    probe = subprocess.run(
+        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", MAYA_HOST,
+         "PATH=$PATH:/opt/homebrew/bin:/usr/local/bin ollama list 2>/dev/null | grep -qi maya1"],
+        capture_output=True,
+    )
+    return probe.returncode == 0
+
+
+def render_maya(clips):
+    """Batch-render on the ollama host; wavs come back over scp."""
+    if not shutil.which("ffmpeg"):
+        sys.exit("ffmpeg is required to post-process maya clips")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = pathlib.Path(tmpdir)
+        (tmp / "maya_job.json").write_text(json.dumps({
+            "description": MAYA_VOICE,
+            "out_dir": "/tmp/maya_out",
+            "seed_base": 7,
+            "clips": clips,
+        }))
+        script = pathlib.Path(__file__).resolve().parent / "maya1_render.py"
+        subprocess.run(["ssh", MAYA_HOST, "rm -rf /tmp/maya_out"], check=True)
+        subprocess.run(
+            ["scp", "-q", str(script), str(tmp / "maya_job.json"), f"{MAYA_HOST}:/tmp/"],
+            check=True,
+        )
+        subprocess.run(
+            ["ssh", MAYA_HOST,
+             "~/maya-tts/venv/bin/python /tmp/maya1_render.py /tmp/maya_job.json"],
+            check=True,
+        )
+        subprocess.run(["scp", "-q", f"{MAYA_HOST}:/tmp/maya_out/*.wav", tmpdir], check=True)
+        failed = []
+        for name in clips:
+            wav = tmp / f"{name}.wav"
+            if wav.exists():
+                postprocess_to_mp3(wav, name)
+                print(f"rendered {name}")
+            else:
+                failed.append(name)
+        if failed:
+            sys.exit(f"maya failed to render: {', '.join(failed)}")
 
 
 def render_edge(binary, name, text):
@@ -123,24 +243,79 @@ def openai_api_key():
     return os.environ.get("OPENAI_API_KEY")
 
 
+def choose_backend():
+    forced = os.environ.get("VOICE_TTS")
+    if forced:
+        return forced
+    previous = load_manifest().get("backend")
+    if previous == "maya":
+        if maya_available():
+            return "maya"
+        # Don't silently re-voice the whole game with another engine (and
+        # don't fail the build): keep the committed clips.
+        print(f"voice clips were rendered with maya but {MAYA_HOST} is "
+              "unreachable — keeping existing clips (VOICE_TTS=openai|edge to switch)")
+        return None
+    if previous == "openai" and openai_api_key():
+        return "openai"
+    if maya_available():
+        return "maya"
+    if openai_api_key():
+        return "openai"
+    return "edge"
+
+
 def main():
-    api_key = openai_api_key()
-    if api_key:
-        print(f"rendering with OpenAI {OPENAI_MODEL} voice={OPENAI_VOICE}")
-        render = lambda kv: render_openai(api_key, *kv)
-    else:
-        binary = edge_tts_bin()
-        print("rendering with edge-tts (set OPENAI_API_KEY for the real cowboy voice)")
-        render = lambda kv: render_edge(binary, *kv)
-    OUT.mkdir(parents=True, exist_ok=True)
+    backend = choose_backend()
+    if backend is None:
+        return
     clips = build_clips(load_strings())
+    human = human_recorded()
+    force = bool(os.environ.get("VOICE_OVERWRITE"))
+    previous = load_manifest().get("clips", {})
+    todo = {
+        n: t for n, t in clips.items()
+        if n not in human
+        and (force or previous.get(n) != clip_signature(backend, t)
+             or not (OUT / f"{n}.mp3").exists())
+    }
+    for name in sorted(human):
+        print(f"keeping human recording: {name}")
+    OUT.mkdir(parents=True, exist_ok=True)
     for stale in OUT.glob("*.mp3"):
         if stale.stem not in clips:
             stale.unlink()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
-        for name in pool.map(render, clips.items()):
-            print(f"rendered {name}")
-    print(f"{len(clips)} clips in {OUT}")
+    if not todo:
+        print(f"all {len(clips)} clips up to date ({backend})")
+        return
+    if backend == "maya":
+        print(f"rendering with maya1 (ollama on {MAYA_HOST})")
+        render_maya(todo)
+    elif backend == "openai":
+        api_key = openai_api_key()
+        if not api_key:
+            sys.exit("VOICE_TTS=openai but no api key found")
+        print(f"rendering with OpenAI {OPENAI_MODEL} voice={OPENAI_VOICE}")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            for name in pool.map(lambda kv: render_openai(api_key, *kv), todo.items()):
+                print(f"rendered {name}")
+    elif backend == "edge":
+        binary = edge_tts_bin()
+        print("rendering with edge-tts (no drawl — maya/openai do the real cowboy voice)")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            for name in pool.map(lambda kv: render_edge(binary, *kv), todo.items()):
+                print(f"rendered {name}")
+    else:
+        sys.exit(f"unknown backend {backend!r} (use maya, openai or edge)")
+    MANIFEST.write_text(json.dumps({
+        "backend": backend,
+        "clips": {
+            n: clip_signature(backend, t)
+            for n, t in clips.items() if n not in human
+        },
+    }, indent=1, sort_keys=True) + "\n")
+    print(f"{len(todo)} clips rendered by {backend}, "
+          f"{len(human)} human recordings kept, in {OUT}")
 
 
 if __name__ == "__main__":

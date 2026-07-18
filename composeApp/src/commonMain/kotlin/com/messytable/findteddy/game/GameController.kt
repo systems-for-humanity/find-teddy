@@ -70,6 +70,12 @@ class GameController(
     private var determinedThreshold = 3
     private var thresholdStep = 1
 
+    // One queued line at most: the color prompt that follows the praise
+    // (separate clips, so the praise needs no per-color variants). Any newer
+    // speech replaces the queue so a stale prompt can never fire.
+    private var pendingLine: VoiceLine? = null
+    private var pendingDelay = 0f
+
     fun startRound() {
         balls.clear()
         particles.clear()
@@ -78,6 +84,7 @@ class GameController(
         wrongStreak = 0
         determinedThreshold = 3
         thresholdStep = 1
+        pendingLine = null
         // Enough balls to cover roughly the lower ~60% of the screen once
         // settled, which buries the teddy completely.
         val minR = minBallRadius
@@ -101,6 +108,13 @@ class GameController(
 
     fun update(dtRaw: Float) {
         val dt = dtRaw.coerceIn(0f, 1f / 30f)
+        pendingLine?.let { line ->
+            pendingDelay -= dt
+            if (pendingDelay <= 0f) {
+                pendingLine = null
+                speak(line)
+            }
+        }
         integrate(dt)
         var removed = false
         balls.removeAll { ball ->
@@ -287,13 +301,17 @@ class GameController(
                     thresholdStep = 3 - thresholdStep // alternate +1, +2
                     hit.popping = true
                     explode(hit, scale = 2f)
-                    speak(VoiceLine.Determined(target))
+                    say(
+                        VoiceLine.Determined,
+                        followUp = VoiceLine.NextPrompt(target),
+                        afterSeconds = DETERMINED_PRAISE_SECONDS,
+                    )
                 } else {
                     hit.wobble = 1f
                     hit.vx += (rnd.nextFloat() - 0.5f) * width * 0.2f
                     if (lastWrongSpeak.elapsedNow().inWholeMilliseconds > 2500) {
                         lastWrongSpeak = clock.markNow()
-                        speak(VoiceLine.Wrong(target = target, actual = hit.color))
+                        say(VoiceLine.Wrong(target = target, actual = hit.color))
                     }
                 }
             }
@@ -301,9 +319,16 @@ class GameController(
         }
         if (teddy.contains(x, y) && isUncoveredAt(x, y)) {
             won = true
-            speak(VoiceLine.Win)
+            say(VoiceLine.Win)
             onWin()
         }
+    }
+
+    /** Speaks [line] now; a [followUp] plays [afterSeconds] later unless something else is said first. */
+    private fun say(line: VoiceLine, followUp: VoiceLine? = null, afterSeconds: Float = 0f) {
+        pendingLine = followUp
+        pendingDelay = afterSeconds
+        speak(line)
     }
 
     private fun colorName(c: BallColor): String = strings.colorNames[c] ?: c.label
@@ -330,7 +355,7 @@ class GameController(
         if (balls.isEmpty()) {
             targetColor = null
             message = strings.bannerFindTeddy
-            speak(VoiceLine.AllClean)
+            say(VoiceLine.AllClean)
         } else {
             pickNextTarget(first = false)
         }
@@ -342,6 +367,15 @@ class GameController(
         val next = available[rnd.nextInt(available.size)]
         targetColor = next
         message = strings.bannerTouch.replace("{color}", colorName(next).uppercase())
-        speak(if (first) VoiceLine.FirstPrompt(next) else VoiceLine.NextPrompt(next))
+        say(if (first) VoiceLine.FirstPrompt(next) else VoiceLine.NextPrompt(next))
+    }
+
+    companion object {
+        /**
+         * Gap between the "determined partner" praise and its color prompt;
+         * the praise clip's length plus a beat, so the two read as one
+         * sentence. Playing the prompt early would cut the praise off.
+         */
+        const val DETERMINED_PRAISE_SECONDS = 2.4f
     }
 }

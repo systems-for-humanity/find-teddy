@@ -57,8 +57,14 @@ val generateVoicePrompts by tasks.registering(Exec::class) {
         "src/commonMain/composeResources/values/strings.xml",
         rootProject.file("tools/generate_voice_prompts.py"),
     )
-    outputs.dir("src/commonMain/composeResources/files/voice")
+    // The clip files are managed by the script itself (and by
+    // record_voice_prompts.py), so gradle only tracks a stamp: declaring the
+    // voice dir as output would mark the task stale after every out-of-band
+    // render or recording session and re-run a long TTS job.
+    val stamp = layout.buildDirectory.file("generateVoicePrompts.stamp")
+    outputs.file(stamp)
     commandLine("python3", rootProject.file("tools/generate_voice_prompts.py").absolutePath)
+    doLast { stamp.get().asFile.writeText("ok\n") }
 }
 
 tasks.matching {

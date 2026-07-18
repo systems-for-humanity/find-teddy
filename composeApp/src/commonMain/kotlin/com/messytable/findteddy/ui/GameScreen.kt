@@ -53,6 +53,7 @@ import com.messytable.findteddy.platform.HapticFeedback
 import com.messytable.findteddy.platform.ShakeListener
 import com.messytable.findteddy.platform.SpeechSynthesizer
 import com.messytable.findteddy.platform.VoicePlayer
+import kotlinx.coroutines.withTimeoutOrNull
 import messytable.composeapp.generated.resources.Res
 import messytable.composeapp.generated.resources.shake_hint
 import org.jetbrains.compose.resources.ExperimentalResourceApi
@@ -85,10 +86,18 @@ private fun GamePlayField(speech: SpeechSynthesizer, onWin: () -> Unit) {
             val clips = buildMap {
                 for (line in VoiceLine.all()) {
                     val file = line.clipFile()
-                    put(file, Res.readBytes("files/voice/$file"))
+                    // A clip may be absent (e.g. a partially recorded custom
+                    // voice); those lines fall back to runtime TTS.
+                    runCatching { Res.readBytes("files/voice/$file") }
+                        .onSuccess { put(file, it) }
                 }
             }
-            voice = VoicePlayer(clips)
+            val player = VoicePlayer(clips)
+            // Android decodes clips asynchronously; the controller speaks the
+            // first prompt the moment it exists, so wait until clips can play
+            // (capped in case a decode fails) or that line comes out as TTS.
+            withTimeoutOrNull(5_000) { player.awaitReady() }
+            voice = player
         }
         strings = loaded
     }
@@ -108,9 +117,9 @@ private fun GamePlayField(speech: SpeechSynthesizer, onWin: () -> Unit) {
         var sound by remember { mutableStateOf<GameSoundPlayer?>(null) }
         LaunchedEffect(Unit) {
             sound = GameSoundPlayer(
-                popWavs = (0 until 6).map { Res.readBytes("files/pop_$it.wav") },
-                boomWav = Res.readBytes("files/boom.wav"),
-                bigBoomWav = Res.readBytes("files/boom_big.wav"),
+                pops = (0 until 6).map { Res.readBytes("files/pop_$it.mp3") },
+                boom = Res.readBytes("files/boom.mp3"),
+                bigBoom = Res.readBytes("files/boom_big.mp3"),
             )
         }
         val haptics = remember { HapticFeedback() }

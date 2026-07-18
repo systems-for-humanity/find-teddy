@@ -10,21 +10,21 @@ import kotlin.math.roundToInt
 
 @OptIn(ExperimentalForeignApi::class)
 actual class GameSoundPlayer actual constructor(
-    popWavs: List<ByteArray>,
-    boomWav: ByteArray,
-    bigBoomWav: ByteArray,
+    pops: List<ByteArray>,
+    boom: ByteArray,
+    bigBoom: ByteArray,
 ) {
     // Small pools so rapid sounds overlap instead of cutting off.
-    private val popPools = popWavs.map { makePlayers(it, count = 2) }
-    private val boomPlayers = makePlayers(boomWav, count = 2)
-    private val bigBoomPlayers = makePlayers(bigBoomWav, count = 2)
+    private val popPools = pops.map { makePlayers(it, count = 2) }
+    private val boomPlayers = makePlayers(boom, count = 2)
+    private val bigBoomPlayers = makePlayers(bigBoom, count = 2)
     private val nextPop = IntArray(popPools.size)
     private var nextBoom = 0
     private var nextBigBoom = 0
 
-    private fun makePlayers(wav: ByteArray, count: Int): List<AVAudioPlayer> {
-        val data = wav.usePinned { pinned ->
-            NSData.dataWithBytes(pinned.addressOf(0), wav.size.toULong())
+    private fun makePlayers(bytes: ByteArray, count: Int): List<AVAudioPlayer> {
+        val data = bytes.usePinned { pinned ->
+            NSData.dataWithBytes(pinned.addressOf(0), bytes.size.toULong())
         }
         return List(count) {
             AVAudioPlayer(data = data, error = null).apply { prepareToPlay() }

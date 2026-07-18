@@ -17,6 +17,9 @@ actual class VoicePlayer actual constructor(clips: Map<String, ByteArray>) {
     }
     private var current: AVAudioPlayer? = null
 
+    // Players are prepared synchronously in the constructor.
+    actual suspend fun awaitReady() = Unit
+
     actual fun play(clip: String): Boolean {
         val player = players[clip] ?: return false
         current?.stop()

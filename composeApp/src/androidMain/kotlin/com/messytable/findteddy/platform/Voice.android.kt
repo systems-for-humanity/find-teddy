@@ -3,6 +3,7 @@ package com.messytable.findteddy.platform
 import android.media.AudioAttributes
 import android.media.SoundPool
 import java.io.File
+import kotlinx.coroutines.CompletableDeferred
 
 actual class VoicePlayer actual constructor(clips: Map<String, ByteArray>) {
     private val soundPool = SoundPool.Builder()
@@ -17,10 +18,13 @@ actual class VoicePlayer actual constructor(clips: Map<String, ByteArray>) {
     private val loadedIds = mutableSetOf<Int>()
     private val soundIds: Map<String, Int>
     private var currentStream = 0
+    private val ready = CompletableDeferred<Unit>()
 
     init {
+        var completed = 0
         soundPool.setOnLoadCompleteListener { _, sampleId, status ->
             if (status == 0) loadedIds += sampleId
+            if (++completed == clips.size) ready.complete(Unit)
         }
         val dir = File(appContext.cacheDir, "voice").apply { mkdirs() }
         soundIds = clips.mapValues { (name, bytes) ->
@@ -28,7 +32,10 @@ actual class VoicePlayer actual constructor(clips: Map<String, ByteArray>) {
             file.writeBytes(bytes)
             soundPool.load(file.path, 1)
         }
+        if (clips.isEmpty()) ready.complete(Unit)
     }
+
+    actual suspend fun awaitReady() = ready.await()
 
     actual fun play(clip: String): Boolean {
         val id = soundIds[clip] ?: return false
