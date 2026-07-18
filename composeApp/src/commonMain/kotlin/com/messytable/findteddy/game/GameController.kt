@@ -34,6 +34,8 @@ class GameController(
     val height: Float,
     private val speak: (String) -> Unit,
     private val onWin: () -> Unit,
+    private val onPop: () -> Unit = {},
+    private val onExplode: (big: Boolean) -> Unit = {},
 ) {
     val balls = mutableListOf<Ball>()
     val particles = mutableListOf<Particle>()
@@ -56,10 +58,21 @@ class GameController(
     private var lastWrongSpeak = startMark
     private var won = false
 
+    // "Determined partner": tapping the same wrong ball enough times in a
+    // row blows it up. The required count escalates 3, 4, 6, 7, 9, 10, ...
+    private var wrongBallId = -1
+    private var wrongStreak = 0
+    private var determinedThreshold = 3
+    private var thresholdStep = 1
+
     fun startRound() {
         balls.clear()
         particles.clear()
         won = false
+        wrongBallId = -1
+        wrongStreak = 0
+        determinedThreshold = 3
+        thresholdStep = 1
         // Enough balls to cover roughly the lower ~60% of the screen once
         // settled, which buries the teddy completely.
         val minR = width * 0.045f
@@ -204,11 +217,28 @@ class GameController(
         particles.removeAll { it.life <= 0f }
     }
 
-    /** The last ball of a color bursts into flying fragments. */
-    private fun explode(b: Ball) {
-        repeat(48) {
+    /**
+     * A ball bursts into flying fragments with a shockwave radiating from
+     * its position. At scale 1 the total kick is almost as strong as a
+     * shake; the "determined partner" blast uses scale 2.
+     */
+    private fun explode(b: Ball, scale: Float = 1f) {
+        onExplode(scale > 1f)
+        val blastRadius = (width + height) * 0.35f * scale
+        val blastStrength = height * 2.2f * scale
+        for (other in balls) {
+            if (other === b || other.popping) continue
+            val dx = other.x - b.x
+            val dy = other.y - b.y
+            val d = sqrt(dx * dx + dy * dy).coerceAtLeast(1f)
+            if (d > blastRadius) continue
+            val falloff = 1f - d / blastRadius
+            other.vx += dx / d * blastStrength * falloff
+            other.vy += (dy / d * blastStrength - height * 0.5f * scale) * falloff
+        }
+        repeat((48 * scale).toInt()) {
             val angle = rnd.nextFloat() * 2f * PI.toFloat()
-            val speed = (0.3f + rnd.nextFloat() * 0.9f) * width
+            val speed = (0.3f + rnd.nextFloat() * 0.9f) * width * (0.5f + 0.5f * scale)
             val life = 0.7f + rnd.nextFloat() * 0.8f
             particles += Particle(
                 x = b.x,
@@ -235,14 +265,31 @@ class GameController(
         if (hit != null) {
             val target = targetColor ?: return
             if (hit.color == target) {
+                wrongBallId = -1
+                wrongStreak = 0
                 hit.popping = true
+                onPop()
                 if (balls.none { !it.popping && it.color == hit.color }) explode(hit)
             } else {
-                hit.wobble = 1f
-                hit.vx += (rnd.nextFloat() - 0.5f) * width * 0.2f
-                if (lastWrongSpeak.elapsedNow().inWholeMilliseconds > 2500) {
-                    lastWrongSpeak = clock.markNow()
-                    speak("No, that is ${hit.color.label}. Touch the ${target.label} balls!")
+                if (hit.id == wrongBallId) wrongStreak++ else {
+                    wrongBallId = hit.id
+                    wrongStreak = 1
+                }
+                if (wrongStreak >= determinedThreshold) {
+                    wrongBallId = -1
+                    wrongStreak = 0
+                    determinedThreshold += thresholdStep
+                    thresholdStep = 3 - thresholdStep // alternate +1, +2
+                    hit.popping = true
+                    explode(hit, scale = 2f)
+                    speak("Wow! You are determined, partner!")
+                } else {
+                    hit.wobble = 1f
+                    hit.vx += (rnd.nextFloat() - 0.5f) * width * 0.2f
+                    if (lastWrongSpeak.elapsedNow().inWholeMilliseconds > 2500) {
+                        lastWrongSpeak = clock.markNow()
+                        speak("No, that is ${hit.color.label}. Touch the ${target.label} balls!")
+                    }
                 }
             }
             return

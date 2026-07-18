@@ -11,8 +11,11 @@ private const val DT = 1f / 60f
 
 class GameControllerTest {
 
-    private fun controller(onWin: () -> Unit = {}): GameController =
-        GameController(W, H, speak = {}, onWin = onWin).also { it.startRound() }
+    private fun controller(
+        onWin: () -> Unit = {},
+        speak: (String) -> Unit = {},
+    ): GameController =
+        GameController(W, H, speak = speak, onWin = onWin).also { it.startRound() }
 
     private fun settle(c: GameController, frames: Int = 900) {
         repeat(frames) { c.update(DT) }
@@ -141,6 +144,91 @@ class GameControllerTest {
         assertTrue(c.balls.any { it.color != target }, "other colors still remain")
         settle(c, frames = 240)
         assertTrue(c.particles.isEmpty(), "explosion particles should fade away")
+    }
+
+    @Test
+    fun explosionPushesNearbyBallsAway() {
+        val c = controller()
+        settle(c, frames = 300)
+        val target = c.targetColor!!
+        val keep = c.balls.first { it.color == target }
+        for (b in c.balls) {
+            if (b.color == target && b !== keep) {
+                b.popping = true
+                b.popProgress = 1f
+            }
+        }
+        c.update(DT)
+        // stage the blast in open air with one resting neighbor to its right
+        keep.x = W / 2f
+        keep.y = 300f
+        val neighbor = c.balls.first { it !== keep }
+        neighbor.x = keep.x + keep.radius + neighbor.radius + 5f
+        neighbor.y = keep.y
+        neighbor.vx = 0f
+        neighbor.vy = 0f
+        c.tap(keep.x, keep.y)
+        assertTrue(keep.popping, "last ball of the target color should pop")
+        assertTrue(neighbor.vx > 0f, "neighbor should be shoved away from the blast")
+        assertTrue(neighbor.vy < 0f, "shockwave should kick the neighbor upward")
+    }
+
+    @Test
+    fun determinedPartnerExplodesStubbornBallWithEscalatingThreshold() {
+        val spoken = mutableListOf<String>()
+        val c = controller(speak = { spoken += it })
+        settle(c, frames = 300)
+        val target = c.targetColor!!
+
+        fun stageWrongBall(y: Float): Ball {
+            val b = c.balls.first { it.color != target && !it.popping }
+            b.x = W / 2f
+            b.y = y
+            return b
+        }
+
+        // Stage 1: threshold 3.
+        val w1 = stageWrongBall(150f)
+        repeat(2) { c.tap(w1.x, w1.y) }
+        assertFalse(w1.popping, "two taps should not explode yet")
+        c.tap(w1.x, w1.y)
+        assertTrue(w1.popping, "third tap on the same wrong ball should explode it")
+        assertTrue(c.particles.isNotEmpty(), "determined blast should throw fragments")
+        assertTrue(spoken.any { it.contains("determined") }, "should praise determination")
+
+        // Stage 2: threshold escalates to 4.
+        val w2 = stageWrongBall(350f)
+        repeat(3) { c.tap(w2.x, w2.y) }
+        assertFalse(w2.popping, "threshold is now 4, three taps are not enough")
+        c.tap(w2.x, w2.y)
+        assertTrue(w2.popping, "fourth tap should explode the next stubborn ball")
+
+        // Stage 3: threshold escalates to 6.
+        val w3 = stageWrongBall(550f)
+        repeat(5) { c.tap(w3.x, w3.y) }
+        assertFalse(w3.popping, "threshold is now 6, five taps are not enough")
+        c.tap(w3.x, w3.y)
+        assertTrue(w3.popping, "sixth tap should explode")
+    }
+
+    @Test
+    fun tappingDifferentWrongBallsDoesNotBuildAStreak() {
+        val c = controller()
+        settle(c, frames = 300)
+        val target = c.targetColor!!
+        val wrongs = c.balls.filter { it.color != target }.take(2)
+        if (wrongs.size < 2) return
+        val (a, b) = wrongs
+        a.x = W / 2f
+        a.y = 150f
+        b.x = W / 2f
+        b.y = 450f
+        repeat(4) {
+            c.tap(a.x, a.y)
+            c.tap(b.x, b.y)
+        }
+        assertFalse(a.popping, "alternating taps must not trigger the determined blast")
+        assertFalse(b.popping, "alternating taps must not trigger the determined blast")
     }
 
     @Test

@@ -24,24 +24,32 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.withFrameNanos
 import com.messytable.findteddy.game.BallColor
 import com.messytable.findteddy.game.GameController
+import com.messytable.findteddy.platform.GameSoundPlayer
 import com.messytable.findteddy.platform.ShakeListener
 import com.messytable.findteddy.platform.SpeechSynthesizer
+import messytable.composeapp.generated.resources.Res
+import org.jetbrains.compose.resources.ExperimentalResourceApi
 
 val RoomBackground = Brush.verticalGradient(
     0f to Color(0xFF81D4FA),
@@ -56,6 +64,7 @@ fun GameScreen(speech: SpeechSynthesizer, onWin: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalResourceApi::class)
 @Composable
 private fun GamePlayField(speech: SpeechSynthesizer, onWin: () -> Unit) {
     // Keep the physics floor above the system navigation bar / home indicator
@@ -69,9 +78,30 @@ private fun GamePlayField(speech: SpeechSynthesizer, onWin: () -> Unit) {
         val widthPx = with(density) { maxWidth.toPx() }
         val heightPx = with(density) { maxHeight.toPx() }
 
+        var sound by remember { mutableStateOf<GameSoundPlayer?>(null) }
+        LaunchedEffect(Unit) {
+            sound = GameSoundPlayer(
+                popWav = Res.readBytes("files/pop.wav"),
+                boomWav = Res.readBytes("files/boom.wav"),
+                bigBoomWav = Res.readBytes("files/boom_big.wav"),
+            )
+        }
+        val haptics = LocalHapticFeedback.current
         val controller = remember(widthPx, heightPx) {
-            GameController(widthPx, heightPx, speak = speech::speak, onWin = onWin)
-                .also { it.startRound() }
+            GameController(
+                width = widthPx,
+                height = heightPx,
+                speak = speech::speak,
+                onWin = onWin,
+                onPop = {
+                    sound?.playPop()
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                },
+                onExplode = { big ->
+                    if (big) sound?.playBigBoom() else sound?.playBoom()
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                },
+            ).also { it.startRound() }
         }
 
         LaunchedEffect(controller) {
