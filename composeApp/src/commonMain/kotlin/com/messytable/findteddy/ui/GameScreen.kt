@@ -45,11 +45,15 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.withFrameNanos
 import com.messytable.findteddy.game.BallColor
 import com.messytable.findteddy.game.GameController
+import com.messytable.findteddy.i18n.GameStrings
+import com.messytable.findteddy.i18n.loadGameStrings
 import com.messytable.findteddy.platform.GameSoundPlayer
 import com.messytable.findteddy.platform.ShakeListener
 import com.messytable.findteddy.platform.SpeechSynthesizer
 import messytable.composeapp.generated.resources.Res
+import messytable.composeapp.generated.resources.shake_hint
 import org.jetbrains.compose.resources.ExperimentalResourceApi
+import org.jetbrains.compose.resources.stringResource
 
 val RoomBackground = Brush.verticalGradient(
     0f to Color(0xFF81D4FA),
@@ -67,6 +71,12 @@ fun GameScreen(speech: SpeechSynthesizer, onWin: () -> Unit) {
 @OptIn(ExperimentalResourceApi::class)
 @Composable
 private fun GamePlayField(speech: SpeechSynthesizer, onWin: () -> Unit) {
+    // Strings must be resolved before the controller exists: it speaks the
+    // first prompt immediately and cannot use suspend resource APIs itself.
+    var strings by remember { mutableStateOf<GameStrings?>(null) }
+    LaunchedEffect(Unit) { strings = loadGameStrings() }
+    val gameStrings = strings ?: return
+
     // Keep the physics floor above the system navigation bar / home indicator
     // so the bottom row of balls stays visible and touchable.
     BoxWithConstraints(
@@ -87,10 +97,11 @@ private fun GamePlayField(speech: SpeechSynthesizer, onWin: () -> Unit) {
             )
         }
         val haptics = LocalHapticFeedback.current
-        val controller = remember(widthPx, heightPx) {
+        val controller = remember(widthPx, heightPx, gameStrings) {
             GameController(
                 width = widthPx,
                 height = heightPx,
+                strings = gameStrings,
                 speak = speech::speak,
                 onWin = onWin,
                 onPop = {
@@ -158,7 +169,7 @@ private fun GamePlayField(speech: SpeechSynthesizer, onWin: () -> Unit) {
                     color = Color(0xB3FFFFFF),
                 ) {
                     Text(
-                        "📳 Shake to mix!",
+                        stringResource(Res.string.shake_hint),
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,

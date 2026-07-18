@@ -35,6 +35,10 @@ import com.messytable.findteddy.game.Teddy
 import kotlin.math.min
 import kotlin.math.sin
 import kotlin.random.Random
+import messytable.composeapp.generated.resources.Res
+import messytable.composeapp.generated.resources.play_again
+import messytable.composeapp.generated.resources.win_title
+import org.jetbrains.compose.resources.stringResource
 
 private class Confetto(
     var x: Float,
@@ -94,7 +98,7 @@ fun WinScreen(onReplay: () -> Unit) {
             verticalArrangement = Arrangement.Center,
         ) {
             Text(
-                "🎉 You found Teddy! 🎉",
+                stringResource(Res.string.win_title),
                 fontSize = 34.sp,
                 fontWeight = FontWeight.ExtraBold,
                 textAlign = TextAlign.Center,
@@ -115,7 +119,7 @@ fun WinScreen(onReplay: () -> Unit) {
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFB8C00)),
             ) {
                 Text(
-                    "PLAY AGAIN",
+                    stringResource(Res.string.play_again),
                     fontSize = 26.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = Color.White,

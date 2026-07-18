@@ -1,0 +1,22 @@
+<resources>
+    <string name="app_title">Find Teddy!</string>
+    <string name="start_subtitle">Teddy is hiding under the balls.\nPop the balls and dig him out!</string>
+    <string name="play">▶  PLAY</string>
+    <string name="play_again">PLAY AGAIN</string>
+    <string name="win_title">🎉 You found Teddy! 🎉</string>
+    <string name="shake_hint">📳 Shake to mix!</string>
+    <string name="banner_touch">Touch the {color} balls!</string>
+    <string name="banner_find_teddy">Find Teddy!</string>
+    <string name="speak_first_prompt">Teddy is lost under the balls! Touch the {color} balls!</string>
+    <string name="speak_next_prompt">Great job! Now touch the {color} balls!</string>
+    <string name="speak_wrong">No, that is {color}. Touch the {target} balls!</string>
+    <string name="speak_all_clean">All clean! Where is Teddy? Touch Teddy!</string>
+    <string name="speak_determined">Wow! You are determined, partner!</string>
+    <string name="speak_win">Hooray! You found Teddy!</string>
+    <string name="color_red">red</string>
+    <string name="color_blue">blue</string>
+    <string name="color_green">green</string>
+    <string name="color_yellow">yellow</string>
+    <string name="color_purple">purple</string>
+    <string name="color_orange">orange</string>
+</resources>

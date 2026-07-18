@@ -16,7 +16,7 @@ actual class SpeechSynthesizer actual constructor() {
     init {
         tts = TextToSpeech(appContext) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale.US
+                tts?.language = Locale.getDefault()
                 ready = true
                 pending?.let { speak(it) }
                 pending = null

@@ -20,6 +20,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.messytable.findteddy.game.Teddy
 import kotlin.math.min
+import messytable.composeapp.generated.resources.Res
+import messytable.composeapp.generated.resources.app_title
+import messytable.composeapp.generated.resources.play
+import messytable.composeapp.generated.resources.start_subtitle
+import org.jetbrains.compose.resources.stringResource
 
 @Composable
 fun StartScreen(onPlay: () -> Unit) {
@@ -29,7 +34,7 @@ fun StartScreen(onPlay: () -> Unit) {
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
-            "Find Teddy!",
+            stringResource(Res.string.app_title),
             fontSize = 46.sp,
             fontWeight = FontWeight.ExtraBold,
             color = Color(0xFF37474F),
@@ -44,7 +49,7 @@ fun StartScreen(onPlay: () -> Unit) {
             )
         }
         Text(
-            "Teddy is hiding under the balls.\nPop the balls and dig him out!",
+            stringResource(Res.string.start_subtitle),
             fontSize = 18.sp,
             fontWeight = FontWeight.Medium,
             color = Color(0xFF546E7A),
@@ -56,7 +61,7 @@ fun StartScreen(onPlay: () -> Unit) {
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF43A047)),
         ) {
             Text(
-                "▶  PLAY",
+                stringResource(Res.string.play),
                 fontSize = 28.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = Color.White,

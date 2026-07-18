@@ -1,5 +1,6 @@
 package com.messytable.findteddy.game
 
+import com.messytable.findteddy.i18n.GameStrings
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
@@ -11,11 +12,24 @@ private const val DT = 1f / 60f
 
 class GameControllerTest {
 
+    private fun testStrings() = GameStrings(
+        bannerTouch = "Touch the {color} balls!",
+        bannerFindTeddy = "Find Teddy!",
+        speakFirstPrompt = "Teddy is lost under the balls! Touch the {color} balls!",
+        speakNextPrompt = "Great job! Now touch the {color} balls!",
+        speakWrong = "No, that is {color}. Touch the {target} balls!",
+        speakAllClean = "All clean! Where is Teddy? Touch Teddy!",
+        speakDetermined = "Wow! You are determined, partner!",
+        speakWin = "Hooray! You found Teddy!",
+        colorNames = BallColor.entries.associateWith { it.label },
+    )
+
     private fun controller(
         onWin: () -> Unit = {},
         speak: (String) -> Unit = {},
     ): GameController =
-        GameController(W, H, speak = speak, onWin = onWin).also { it.startRound() }
+        GameController(W, H, strings = testStrings(), speak = speak, onWin = onWin)
+            .also { it.startRound() }
 
     private fun settle(c: GameController, frames: Int = 900) {
         repeat(frames) { c.update(DT) }

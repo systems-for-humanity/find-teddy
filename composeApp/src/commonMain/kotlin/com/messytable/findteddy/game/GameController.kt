@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.messytable.findteddy.i18n.GameStrings
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -32,6 +33,7 @@ class Particle(
 class GameController(
     val width: Float,
     val height: Float,
+    private val strings: GameStrings,
     private val speak: (String) -> Unit,
     private val onWin: () -> Unit,
     private val onPop: () -> Unit = {},
@@ -282,13 +284,17 @@ class GameController(
                     thresholdStep = 3 - thresholdStep // alternate +1, +2
                     hit.popping = true
                     explode(hit, scale = 2f)
-                    speak("Wow! You are determined, partner!")
+                    speak(strings.speakDetermined)
                 } else {
                     hit.wobble = 1f
                     hit.vx += (rnd.nextFloat() - 0.5f) * width * 0.2f
                     if (lastWrongSpeak.elapsedNow().inWholeMilliseconds > 2500) {
                         lastWrongSpeak = clock.markNow()
-                        speak("No, that is ${hit.color.label}. Touch the ${target.label} balls!")
+                        speak(
+                            strings.speakWrong
+                                .replace("{color}", colorName(hit.color))
+                                .replace("{target}", colorName(target))
+                        )
                     }
                 }
             }
@@ -296,10 +302,12 @@ class GameController(
         }
         if (teddy.contains(x, y) && isUncoveredAt(x, y)) {
             won = true
-            speak("Hooray! You found Teddy!")
+            speak(strings.speakWin)
             onWin()
         }
     }
+
+    private fun colorName(c: BallColor): String = strings.colorNames[c] ?: c.label
 
     /**
      * True when there is a real opening at (x, y), not just the sliver of a
@@ -319,8 +327,8 @@ class GameController(
         if (balls.any { it.color == target && !it.popping }) return
         if (balls.isEmpty()) {
             targetColor = null
-            message = "Find Teddy!"
-            speak("All clean! Where is Teddy? Touch Teddy!")
+            message = strings.bannerFindTeddy
+            speak(strings.speakAllClean)
         } else {
             pickNextTarget(first = false)
         }
@@ -331,12 +339,8 @@ class GameController(
         if (available.isEmpty()) return
         val next = available[rnd.nextInt(available.size)]
         targetColor = next
-        message = "Touch the ${next.label.uppercase()} balls!"
-        val prompt = if (first) {
-            "Teddy is lost under the balls! Touch the ${next.label} balls!"
-        } else {
-            "Great job! Now touch the ${next.label} balls!"
-        }
-        speak(prompt)
+        message = strings.bannerTouch.replace("{color}", colorName(next).uppercase())
+        val pattern = if (first) strings.speakFirstPrompt else strings.speakNextPrompt
+        speak(pattern.replace("{color}", colorName(next)))
     }
 }
