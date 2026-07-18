@@ -1,4 +1,4 @@
-rootProject.name = "messytable"
+rootProject.name = "find-teddy"
 
 pluginManagement {
     repositories {

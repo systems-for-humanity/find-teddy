@@ -76,12 +76,18 @@ tasks.matching {
     dependsOn(generateVoicePrompts)
 }
 
+compose.resources {
+    // Pin the Res class package: it must not drift with the gradle
+    // project/module names (imports reference it directly).
+    packageOfResClass = "app.s4h.findteddy.resources"
+}
+
 android {
-    namespace = "com.messytable.findteddy"
+    namespace = "app.s4h.findteddy"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "com.messytable.findteddy"
+        applicationId = "app.s4h.findteddy"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
