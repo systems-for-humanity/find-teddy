@@ -34,22 +34,25 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.withFrameNanos
 import com.messytable.findteddy.game.BallColor
 import com.messytable.findteddy.game.GameController
+import com.messytable.findteddy.game.VoiceLine
+import com.messytable.findteddy.game.clipFile
+import com.messytable.findteddy.game.text
 import com.messytable.findteddy.i18n.GameStrings
 import com.messytable.findteddy.i18n.loadGameStrings
 import com.messytable.findteddy.platform.GameSoundPlayer
+import com.messytable.findteddy.platform.HapticFeedback
 import com.messytable.findteddy.platform.ShakeListener
 import com.messytable.findteddy.platform.SpeechSynthesizer
+import com.messytable.findteddy.platform.VoicePlayer
 import messytable.composeapp.generated.resources.Res
 import messytable.composeapp.generated.resources.shake_hint
 import org.jetbrains.compose.resources.ExperimentalResourceApi
@@ -71,10 +74,24 @@ fun GameScreen(speech: SpeechSynthesizer, onWin: () -> Unit) {
 @OptIn(ExperimentalResourceApi::class)
 @Composable
 private fun GamePlayField(speech: SpeechSynthesizer, onWin: () -> Unit) {
-    // Strings must be resolved before the controller exists: it speaks the
-    // first prompt immediately and cannot use suspend resource APIs itself.
+    // Strings and voice clips must be resolved before the controller exists:
+    // it speaks the first prompt immediately and cannot use suspend resource
+    // APIs itself. `strings` is set last so the game starts fully loaded.
     var strings by remember { mutableStateOf<GameStrings?>(null) }
-    LaunchedEffect(Unit) { strings = loadGameStrings() }
+    var voice by remember { mutableStateOf<VoicePlayer?>(null) }
+    LaunchedEffect(Unit) {
+        val loaded = loadGameStrings()
+        if (loaded.voicePrerendered) {
+            val clips = buildMap {
+                for (line in VoiceLine.all()) {
+                    val file = line.clipFile()
+                    put(file, Res.readBytes("files/voice/$file"))
+                }
+            }
+            voice = VoicePlayer(clips)
+        }
+        strings = loaded
+    }
     val gameStrings = strings ?: return
 
     // Keep the physics floor above the system navigation bar / home indicator
@@ -91,26 +108,30 @@ private fun GamePlayField(speech: SpeechSynthesizer, onWin: () -> Unit) {
         var sound by remember { mutableStateOf<GameSoundPlayer?>(null) }
         LaunchedEffect(Unit) {
             sound = GameSoundPlayer(
-                popWav = Res.readBytes("files/pop.wav"),
+                popWavs = (0 until 6).map { Res.readBytes("files/pop_$it.wav") },
                 boomWav = Res.readBytes("files/boom.wav"),
                 bigBoomWav = Res.readBytes("files/boom_big.wav"),
             )
         }
-        val haptics = LocalHapticFeedback.current
+        val haptics = remember { HapticFeedback() }
         val controller = remember(widthPx, heightPx, gameStrings) {
             GameController(
                 width = widthPx,
                 height = heightPx,
                 strings = gameStrings,
-                speak = speech::speak,
+                speak = { line ->
+                    if (voice?.play(line.clipFile()) != true) {
+                        speech.speak(line.text(gameStrings))
+                    }
+                },
                 onWin = onWin,
-                onPop = {
-                    sound?.playPop()
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                onPop = { sizeNorm ->
+                    sound?.playPop(sizeNorm)
+                    haptics.tap(0.25f + 0.65f * sizeNorm)
                 },
                 onExplode = { big ->
                     if (big) sound?.playBigBoom() else sound?.playBoom()
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    haptics.tap(if (big) 1f else 0.85f)
                 },
             ).also { it.startRound() }
         }

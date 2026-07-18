@@ -48,6 +48,28 @@ kotlin {
     }
 }
 
+// Pre-renders the spoken prompts whenever the English strings change.
+// Requires network + `pipx install edge-tts`; the rendered mp3s are
+// committed, so the task is UP-TO-DATE on normal builds. Skip explicitly
+// with -x generateVoicePrompts if strings changed while offline.
+val generateVoicePrompts by tasks.registering(Exec::class) {
+    inputs.files(
+        "src/commonMain/composeResources/values/strings.xml",
+        rootProject.file("tools/generate_voice_prompts.py"),
+    )
+    outputs.dir("src/commonMain/composeResources/files/voice")
+    commandLine("python3", rootProject.file("tools/generate_voice_prompts.py").absolutePath)
+}
+
+tasks.matching {
+    it.name == "preBuild" ||
+        it.name.startsWith("compileKotlinIos") ||
+        it.name.startsWith("copyNonXmlValueResources") ||
+        it.name.startsWith("prepareComposeResourcesTask")
+}.configureEach {
+    dependsOn(generateVoicePrompts)
+}
+
 android {
     namespace = "com.messytable.findteddy"
     compileSdk = libs.versions.android.compileSdk.get().toInt()

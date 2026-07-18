@@ -34,14 +34,17 @@ class GameController(
     val width: Float,
     val height: Float,
     private val strings: GameStrings,
-    private val speak: (String) -> Unit,
+    private val speak: (VoiceLine) -> Unit,
     private val onWin: () -> Unit,
-    private val onPop: () -> Unit = {},
+    /** Receives the popped ball's normalized size (0 smallest .. 1 biggest). */
+    private val onPop: (sizeNorm: Float) -> Unit = {},
     private val onExplode: (big: Boolean) -> Unit = {},
 ) {
     val balls = mutableListOf<Ball>()
     val particles = mutableListOf<Particle>()
     val teddy = Teddy(cx = width / 2f, bottom = height, scale = width)
+    private val minBallRadius = width * 0.045f
+    private val maxBallRadius = width * 0.070f
 
     /** Bumped every physics step so the canvas redraws each frame. */
     var frameTick by mutableLongStateOf(0L)
@@ -77,8 +80,8 @@ class GameController(
         thresholdStep = 1
         // Enough balls to cover roughly the lower ~60% of the screen once
         // settled, which buries the teddy completely.
-        val minR = width * 0.045f
-        val maxR = width * 0.070f
+        val minR = minBallRadius
+        val maxR = maxBallRadius
         val avgArea = (PI * ((minR + maxR) / 2f) * ((minR + maxR) / 2f)).toFloat()
         val count = ((width * height * 0.72f * 0.82f) / avgArea).toInt().coerceIn(40, 150)
         repeat(count) { i ->
@@ -270,7 +273,7 @@ class GameController(
                 wrongBallId = -1
                 wrongStreak = 0
                 hit.popping = true
-                onPop()
+                onPop(sizeNorm(hit))
                 if (balls.none { !it.popping && it.color == hit.color }) explode(hit)
             } else {
                 if (hit.id == wrongBallId) wrongStreak++ else {
@@ -284,17 +287,13 @@ class GameController(
                     thresholdStep = 3 - thresholdStep // alternate +1, +2
                     hit.popping = true
                     explode(hit, scale = 2f)
-                    speak(strings.speakDetermined)
+                    speak(VoiceLine.Determined(target))
                 } else {
                     hit.wobble = 1f
                     hit.vx += (rnd.nextFloat() - 0.5f) * width * 0.2f
                     if (lastWrongSpeak.elapsedNow().inWholeMilliseconds > 2500) {
                         lastWrongSpeak = clock.markNow()
-                        speak(
-                            strings.speakWrong
-                                .replace("{color}", colorName(hit.color))
-                                .replace("{target}", colorName(target))
-                        )
+                        speak(VoiceLine.Wrong(target = target, actual = hit.color))
                     }
                 }
             }
@@ -302,12 +301,15 @@ class GameController(
         }
         if (teddy.contains(x, y) && isUncoveredAt(x, y)) {
             won = true
-            speak(strings.speakWin)
+            speak(VoiceLine.Win)
             onWin()
         }
     }
 
     private fun colorName(c: BallColor): String = strings.colorNames[c] ?: c.label
+
+    private fun sizeNorm(b: Ball): Float =
+        ((b.radius - minBallRadius) / (maxBallRadius - minBallRadius)).coerceIn(0f, 1f)
 
     /**
      * True when there is a real opening at (x, y), not just the sliver of a
@@ -328,7 +330,7 @@ class GameController(
         if (balls.isEmpty()) {
             targetColor = null
             message = strings.bannerFindTeddy
-            speak(strings.speakAllClean)
+            speak(VoiceLine.AllClean)
         } else {
             pickNextTarget(first = false)
         }
@@ -340,7 +342,6 @@ class GameController(
         val next = available[rnd.nextInt(available.size)]
         targetColor = next
         message = strings.bannerTouch.replace("{color}", colorName(next).uppercase())
-        val pattern = if (first) strings.speakFirstPrompt else strings.speakNextPrompt
-        speak(pattern.replace("{color}", colorName(next)))
+        speak(if (first) VoiceLine.FirstPrompt(next) else VoiceLine.NextPrompt(next))
     }
 }

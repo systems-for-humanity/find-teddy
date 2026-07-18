@@ -22,11 +22,12 @@ class GameControllerTest {
         speakDetermined = "Wow! You are determined, partner!",
         speakWin = "Hooray! You found Teddy!",
         colorNames = BallColor.entries.associateWith { it.label },
+        voicePrerendered = false,
     )
 
     private fun controller(
         onWin: () -> Unit = {},
-        speak: (String) -> Unit = {},
+        speak: (VoiceLine) -> Unit = {},
     ): GameController =
         GameController(W, H, strings = testStrings(), speak = speak, onWin = onWin)
             .also { it.startRound() }
@@ -189,7 +190,7 @@ class GameControllerTest {
 
     @Test
     fun determinedPartnerExplodesStubbornBallWithEscalatingThreshold() {
-        val spoken = mutableListOf<String>()
+        val spoken = mutableListOf<VoiceLine>()
         val c = controller(speak = { spoken += it })
         settle(c, frames = 300)
         val target = c.targetColor!!
@@ -208,7 +209,7 @@ class GameControllerTest {
         c.tap(w1.x, w1.y)
         assertTrue(w1.popping, "third tap on the same wrong ball should explode it")
         assertTrue(c.particles.isNotEmpty(), "determined blast should throw fragments")
-        assertTrue(spoken.any { it.contains("determined") }, "should praise determination")
+        assertTrue(spoken.any { it is VoiceLine.Determined }, "should praise determination")
 
         // Stage 2: threshold escalates to 4.
         val w2 = stageWrongBall(350f)

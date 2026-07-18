@@ -16,6 +16,7 @@ import messytable.composeapp.generated.resources.speak_first_prompt
 import messytable.composeapp.generated.resources.speak_next_prompt
 import messytable.composeapp.generated.resources.speak_win
 import messytable.composeapp.generated.resources.speak_wrong
+import messytable.composeapp.generated.resources.voice_prerendered
 import org.jetbrains.compose.resources.getString
 
 /**
@@ -33,6 +34,8 @@ class GameStrings(
     val speakDetermined: String,
     val speakWin: String,
     val colorNames: Map<BallColor, String>,
+    /** True when this locale ships pre-rendered voice clips (English). */
+    val voicePrerendered: Boolean,
 )
 
 suspend fun loadGameStrings(): GameStrings = GameStrings(
@@ -44,6 +47,7 @@ suspend fun loadGameStrings(): GameStrings = GameStrings(
     speakAllClean = getString(Res.string.speak_all_clean),
     speakDetermined = getString(Res.string.speak_determined),
     speakWin = getString(Res.string.speak_win),
+    voicePrerendered = getString(Res.string.voice_prerendered) == "true",
     colorNames = mapOf(
         BallColor.RED to getString(Res.string.color_red),
         BallColor.BLUE to getString(Res.string.color_blue),

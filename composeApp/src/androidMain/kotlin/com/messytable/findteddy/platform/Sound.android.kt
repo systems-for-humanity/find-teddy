@@ -3,9 +3,10 @@ package com.messytable.findteddy.platform
 import android.media.AudioAttributes
 import android.media.SoundPool
 import java.io.File
+import kotlin.math.roundToInt
 
 actual class GameSoundPlayer actual constructor(
-    popWav: ByteArray,
+    popWavs: List<ByteArray>,
     boomWav: ByteArray,
     bigBoomWav: ByteArray,
 ) {
@@ -19,7 +20,7 @@ actual class GameSoundPlayer actual constructor(
         )
         .build()
     private val loadedIds = mutableSetOf<Int>()
-    private val popId: Int
+    private val popIds: List<Int>
     private val boomId: Int
     private val bigBoomId: Int
 
@@ -27,7 +28,7 @@ actual class GameSoundPlayer actual constructor(
         soundPool.setOnLoadCompleteListener { _, sampleId, status ->
             if (status == 0) loadedIds += sampleId
         }
-        popId = load("pop.wav", popWav)
+        popIds = popWavs.mapIndexed { i, wav -> load("pop_$i.wav", wav) }
         boomId = load("boom.wav", boomWav)
         bigBoomId = load("boom_big.wav", bigBoomWav)
     }
@@ -38,8 +39,11 @@ actual class GameSoundPlayer actual constructor(
         return soundPool.load(file.path, 1)
     }
 
-    actual fun playPop() {
-        if (popId in loadedIds) soundPool.play(popId, 0.9f, 0.9f, 1, 0, 1f)
+    actual fun playPop(sizeNorm: Float) {
+        if (popIds.isEmpty()) return
+        val index = (sizeNorm.coerceIn(0f, 1f) * (popIds.size - 1)).roundToInt()
+        val id = popIds[index]
+        if (id in loadedIds) soundPool.play(id, 0.9f, 0.9f, 1, 0, 1f)
     }
 
     actual fun playBoom() {

@@ -4,8 +4,12 @@ all samples are CC0 (public domain) from OpenGameArt.org, processed with
 ffmpeg (mono 44.1 kHz s16, trimmed, peak-normalized to -1 dB). shipped in
 `composeApp/src/commonMain/composeResources/files/`.
 
-- `pop.wav` — balloon pop from "Balloon Sounds" by AntumDeluge (pop recorded
-  by Gniffelbaf): https://opengameart.org/content/balloon-sounds
+- `pop_0.wav` … `pop_5.wav` — balloon pop from "Balloon Sounds" by
+  AntumDeluge (pop recorded by Gniffelbaf):
+  https://opengameart.org/content/balloon-sounds
+  source sample kept as `art/pop_source.wav`; the six pitch variants
+  (high = small balloon, low = big) are rendered by
+  `tools/generate_pop_variants.sh`
 - `boom.wav` — first 1.8 s of `dull_explosion.wav` from "Various Sound
   Effects" by Spring Spring:
   https://opengameart.org/content/various-sound-effects-0
