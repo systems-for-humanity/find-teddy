@@ -1,0 +1,10 @@
+.gradle/
+build/
+local.properties
+.kotlin/
+.idea/
+*.iml
+.DS_Store
+captures/
+iosApp/iosApp.xcodeproj/xcuserdata/
+iosApp/iosApp.xcodeproj/project.xcworkspace/xcuserdata/
