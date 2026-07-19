@@ -98,9 +98,26 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+    // Upload key lives outside the repo; FINDTEDDY_* properties come from
+    // ~/.gradle/gradle.properties. Clones without them still build (unsigned
+    // release / debug only).
+    val keystorePath = findProperty("FINDTEDDY_KEYSTORE_PATH") as String?
+    if (keystorePath != null) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = findProperty("FINDTEDDY_KEYSTORE_PASSWORD") as String?
+                keyAlias = findProperty("FINDTEDDY_KEY_ALIAS") as String?
+                keyPassword = findProperty("FINDTEDDY_KEY_PASSWORD") as String?
+            }
+        }
+    }
     buildTypes {
         getByName("release") {
             isMinifyEnabled = false
+            if (keystorePath != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     compileOptions {
